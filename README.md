@@ -1,6 +1,6 @@
-# 小账本 V1.0
+# LunaBloom · 小账本
 
-适配 iPhone Safari 的轻量网页记账工具。
+以「海月藏宝」为主屏幕图标的 iPhone 轻量记账工具。
 
 ## 发布
 GitHub Pages 发布源设置为 `main` 分支、`/(root)` 目录。
