@@ -8,8 +8,8 @@
   "lang": "zh-CN",
   "icons": [
     {
-      "src": "./apple-touch-icon.png?v=1.5",
-      "sizes": "192x192",
+      "src": "./apple-touch-icon.png?v=1.6",
+      "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"
     },
