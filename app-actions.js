@@ -1,7 +1,66 @@
-function saveQueue(){let chosen=queue.filter(x=>x.checked);if(!chosen.length){alert('请先勾选至少一笔');return}let newRecords=[];for(let r of chosen){let amount=Number(r.amount);if(!Number.isFinite(amount)||amount<=0||!iso(r.date)||!r.merchant.trim()){alert('请补齐并核对交易名称、有效日期和大于0的金额。');return}if(r.time&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(r.time)){alert('交易时间格式不正确');return}newRecords.push({id:uid(),merchant:r.merchant.trim(),amount:Math.round(amount*100)/100,kind:r.kind==='income'?'income':'expense',date:r.date,time:r.time||'',category:r.kind==='income'?'收入':itemCategory(r.category),note:(r.note||'').trim()})}
-let duplicates=newRecords.filter(r=>state.records.some(x=>x.date===r.date&&x.amount===r.amount&&x.kind===r.kind&&x.merchant===r.merchant));if(duplicates.length&&!confirm(`发现 ${duplicates.length} 笔疑似已经入账的交易，仍要继续保存吗？`))return;
-state.records.push(...newRecords);if(!persist()){state.records.splice(-newRecords.length);return}queue=queue.filter(x=>!x.checked);alertText=`成功保存 ${newRecords.length} 笔交易，可在“总览”查看分类占比。`;alertErr=false;tab='home';render();scrollTo(0,0)}
-function saveEdit(){let r=state.records.find(x=>x.id===editingId),amount=Number(document.getElementById('edit-amount').value),date=document.getElementById('edit-date').value,merchant=document.getElementById('edit-merchant').value.trim(),kind=document.getElementById('edit-kind').value,time=document.getElementById('edit-time').value;if(!r)return;if(!(amount>0)||!iso(date)||!merchant){alert('请填写有效的名称、日期和金额');return}Object.assign(r,{merchant,amount:Math.round(amount*100)/100,kind,date,time,category:kind==='income'?'收入':itemCategory(document.getElementById('edit-category').value),note:document.getElementById('edit-note').value.trim()});persist();editingId=null;render()}
+// 选定收支类型后，负号仅代表原账单方向。金额以绝对值入账，不再重复弹窗。
+function ledgerAmount(v){
+  const raw=String(v??'').normalize('NFKC').replace(/[−–—﹣－]/g,'-').replace(/[¥￥,\s]/g,'').trim();
+  if(!raw || !/^[+-]?\d+(?:\.\d+)?$/.test(raw))return 0;
+  const n=Math.abs(Number(raw));
+  return Number.isFinite(n)?Math.round(n*100)/100:0;
+}
+function ledgerDate(v){
+  const s=String(v??'').trim();
+  if(!s)return '';
+  const m=s.match(/^(\d{4})[\/.\-年](\d{1,2})[\/.\-月](\d{1,2})日?$/);
+  if(!m)return '';
+  const y=Number(m[1]),mm=Number(m[2]),dd=Number(m[3]);
+  const date=[y,String(mm).padStart(2,'0'),String(dd).padStart(2,'0')].join('-');
+  const test=new Date(date+'T00:00:00');
+  return test.getFullYear()===y&&test.getMonth()+1===mm&&test.getDate()===dd?date:'';
+}
+function ledgerTime(v){
+  const s=String(v??'').normalize('NFKC').trim().replace('：',':');
+  const m=s.match(/^(\d{1,2}):(\d{2})$/);
+  return m&&Number(m[1])<24&&Number(m[2])<60?String(Number(m[1])).padStart(2,'0')+':'+m[2]:'';
+}
+function saveQueue(){
+  // 点击时同步表单，防止用户刚编辑完便点击保存时漏掉最后一个字段。
+  document.querySelectorAll('#queue [data-q][data-field]').forEach(el=>{
+    const r=queue[Number(el.dataset.q)],field=el.dataset.field;
+    if(r)r[field]=field==='checked'?el.checked:el.value;
+  });
+  const chosen=queue.filter(r=>r.checked);
+  if(!chosen.length){setNotice('请先勾选至少一笔交易。',true);return}
+  const saved=chosen.map(r=>{
+    const amount=ledgerAmount(r.amount),date=ledgerDate(r.date);
+    const merchant=String(r.merchant||'').trim()||'待补交易名称';
+    const kind=r.kind==='income'?'income':'expense';
+    return {id:uid(),merchant,amount,kind,date,time:ledgerTime(r.time),category:kind==='income'?'收入':itemCategory(r.category),note:String(r.note||'').trim()};
+  });
+  const oldLength=state.records.length;
+  state.records.push(...saved);
+  if(!persist()){state.records.length=oldLength;return}
+  queue=queue.filter(r=>!r.checked);
+  const missing=saved.filter(r=>!r.date||!r.amount||r.merchant==='待补交易名称').length;
+  alertText='已保存 '+saved.length+' 笔交易。'+(missing?'其中 '+missing+' 笔含待补信息，可在明细中修改。':'');
+  alertErr=false;
+  tab='records';
+  render();
+  scrollTo(0,0);
+}
+function saveEdit(){
+  const r=state.records.find(x=>x.id===editingId);
+  if(!r)return;
+  const kind=document.getElementById('edit-kind').value;
+  const merchant=document.getElementById('edit-merchant').value.trim()||'待补交易名称';
+  Object.assign(r,{
+    merchant,
+    amount:ledgerAmount(document.getElementById('edit-amount').value),
+    kind,
+    date:ledgerDate(document.getElementById('edit-date').value),
+    time:ledgerTime(document.getElementById('edit-time').value),
+    category:kind==='income'?'收入':itemCategory(document.getElementById('edit-category').value),
+    note:document.getElementById('edit-note').value.trim()
+  });
+  if(persist()){editingId=null;render()}
+}
 function addCategory(){let s=document.getElementById('new-cat').value.trim();if(!s)return;if(s==='收入'||state.categories.includes(s)){alert('该分类已存在');return}if(s.length>12){alert('分类名称最多12个字');return}state.categories.push(s);persist();render()}
 function manageCategory(i){let old=state.categories[i];if(!old)return;let s=prompt('修改分类名称（输入空白可尝试删除）',old);if(s===null)return;s=s.trim();if(!s){if(state.records.some(r=>r.category===old)){alert('该分类已有交易，请先修改这些交易的分类，再删除。');return}if(state.categories.length<=1){alert('至少保留一个分类');return}state.categories.splice(i,1)}else{if(s==='收入'||s.length>12||state.categories.some((c,j)=>j!==i&&c===s)){alert('名称重复、过长或不可用');return}state.categories[i]=s;state.records.forEach(r=>{if(r.category===old)r.category=s})}persist();render()}
 function download(name,content,type){let url=URL.createObjectURL(new Blob([content],{type}));let a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}
